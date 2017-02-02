@@ -9,6 +9,7 @@ class Tweet(val user: String, val text: String, val retweets: Int) {
   override def toString: String =
     "User: " + user + "\n" +
       "Text: " + text + " [" + retweets + "]"
+  def mentions(words: List[String]) = words.exists(word => this.text.contains(word))
 }
 
 /**
@@ -76,8 +77,7 @@ abstract class TweetSet {
     * Question: Should we implment this method here, or should it remain abstract
     * and be implemented in the subclasses?
     */
-  def descendingByRetweet: TweetList = ???
-
+  def descendingByRetweet: TweetList
   /**
     * The following methods are already implemented
     */
@@ -109,52 +109,45 @@ abstract class TweetSet {
 }
 
 class Empty extends TweetSet {
+  override def isEmpty = true
   def filter(p: Tweet => Boolean): TweetSet = new Empty
-
   def filterAcc(p: Tweet => Boolean, acc: TweetSet): TweetSet = new Empty
+  override def union(that: TweetSet) = that
+  override def mostRetweeted: Tweet = throw new NoSuchElementException
+  def descendingByRetweet: TweetList = Nil
 
   /**
     * The following methods are already implemented
     */
-
-  override def union(that: TweetSet) = that
-
-  override def mostRetweeted: Tweet = throw new NoSuchElementException
-
   def contains(tweet: Tweet): Boolean = false
-
   def incl(tweet: Tweet): TweetSet = new NonEmpty(tweet, new Empty, new Empty)
-
   def remove(tweet: Tweet): TweetSet = this
-
   def foreach(f: Tweet => Unit): Unit = ()
-
-  override def isEmpty = true
 }
 
 class NonEmpty(elem: Tweet, left: TweetSet, right: TweetSet) extends TweetSet {
   override def isEmpty = false
-
   def filter(p: Tweet => Boolean): TweetSet =
     if (p(this.elem)) new NonEmpty(this.elem, left.filter(p), right.filter(p))
     else new Empty
-
   def filterAcc(p: Tweet => Boolean, acc: TweetSet): TweetSet = acc.filter(p)
+  def union(that: TweetSet): TweetSet = (left union (right union that)).incl(elem)
 
-
-  def union(that: TweetSet): TweetSet = {
-    (left union (right union that)).incl(elem)
+  def descendingByRetweet: TweetList = {
+      val head = this.mostRetweeted
+      val others = this.remove(head)
+      new Cons(head, others.descendingByRetweet)
   }
 
-  override def mostRetweeted: Tweet =
+  override def mostRetweeted: Tweet = {
     if (!left.isEmpty && elem.retweets < left.mostRetweeted.retweets) left.mostRetweeted
     else if (!right.isEmpty && elem.retweets < right.mostRetweeted.retweets) right.mostRetweeted
     else elem
+  }
 
   /**
     * The following methods are already implemented
     */
-
   def contains(x: Tweet): Boolean =
     if (x.text < elem.text) left.contains(x)
     else if (elem.text < x.text) right.contains(x)
@@ -194,9 +187,7 @@ trait TweetList {
 
 object Nil extends TweetList {
   def head = throw new java.util.NoSuchElementException("head of EmptyList")
-
   def tail = throw new java.util.NoSuchElementException("tail of EmptyList")
-
   def isEmpty = true
 }
 
@@ -209,14 +200,19 @@ object GoogleVsApple {
   val google = List("android", "Android", "galaxy", "Galaxy", "nexus", "Nexus")
   val apple = List("ios", "iOS", "iphone", "iPhone", "ipad", "iPad")
 
-  lazy val googleTweets: TweetSet = ???
-  lazy val appleTweets: TweetSet = ???
+  def filterTweets(l: List[String]) = {
+    TweetReader.allTweets.filter(tweet => l.exists(word => tweet.text.contains(word)))
+  }
+  lazy val googleTweets: TweetSet = filterTweets(google)
+  lazy val appleTweets: TweetSet = filterTweets(apple)
 
   /**
     * A list of all tweets mentioning a keyword from either apple or google,
     * sorted by the number of retweets.
     */
-  lazy val trending: TweetList = ???
+  lazy val trending: TweetList = {
+    googleTweets union appleTweets descendingByRetweet
+  }
 }
 
 object Main extends App {
